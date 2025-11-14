@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Optional: you can customize global theme below --- */
+
+/* Set default background & text behavior */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Optional: smooth transitions for color/theme changes */
+* {
+  transition: all 0.2s ease-in-out;
+}
+
+/* 🌈 Moving animated gradient */
+.animated-gradient {
+  background: linear-gradient(-45deg, #7C3AED, #3B82F6, #9333EA, #2563EB);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* ✨ Gentle pulse for logo circle */
+@keyframes pulseSlow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.9;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulseSlow 4s ease-in-out infinite;
+}
