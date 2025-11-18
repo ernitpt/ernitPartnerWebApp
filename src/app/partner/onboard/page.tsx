@@ -1,9 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 export default function PartnerOnboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-gray-900">
+          <div className="bg-white p-10 rounded-3xl shadow-2xl w-[380px] text-center">
+            <h1 className="text-2xl font-bold mb-4">Loading setup...</h1>
+            <p>Hold on while we prepare your onboarding details.</p>
+          </div>
+        </div>
+      }
+    >
+      <PartnerOnboardContent />
+    </Suspense>
+  );
+}
+
+function PartnerOnboardContent() {
   const search = useSearchParams();
   const uid = search.get("uid");
 

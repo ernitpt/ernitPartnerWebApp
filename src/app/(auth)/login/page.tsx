@@ -43,7 +43,7 @@ export default function PartnerLogin() {
       }
 
       // ✅ Redirect to partner dashboard (or admin if needed)
-        router.push("/dashboard" as any);
+        router.push("/dashboard");
 
     } catch (error: any) {
       alert(error.message ?? "Login failed");

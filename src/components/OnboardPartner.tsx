@@ -16,8 +16,10 @@ export default function OnboardPartner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: onboardEmail.trim() }),
       });
+
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed to generate link");
+
       setOnboardLink(data.link);
     } catch (e: any) {
       alert(e.message);
@@ -28,8 +30,8 @@ export default function OnboardPartner() {
 
   return (
     <div className="mb-10 text-gray-900">
-      {/* 🧭 Partner Onboarding */}
       <h3 className="text-lg font-semibold mb-2">Generate Partner Onboarding Link</h3>
+
       <div className="flex flex-col sm:flex-row gap-3 mb-3">
         <input
           type="email"

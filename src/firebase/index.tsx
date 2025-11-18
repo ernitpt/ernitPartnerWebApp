@@ -3,9 +3,9 @@ import { useRouter } from "next/router";
 import CouponLookup from "../components/CouponLookup";
 import AdminInviteManager from "../components/AdminInviteManager";
 import { useState } from "react";
-import { auth, db } from "../../src/firebase";
-import { sendPasswordResetEmail } from "../../src/firebase/auth"; // ✅ correct imports
-import { addDoc, collection, serverTimestamp } from "../../src/firebase/firestore"; // ✅ correct imports
+import { auth, db } from "../firebase";
+import { sendPasswordResetEmail } from "./auth"; // ✅ correct imports
+import { addDoc, collection, serverTimestamp } from "./firestore"; // ✅ correct imports
 
 
 export default function Dashboard() {
