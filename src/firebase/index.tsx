@@ -52,13 +52,14 @@ export default function Dashboard() {
     }
     setCreating(true);
     try {
-      await addDoc(collection(db, `partnerCoupons/${partnerId}/coupons`), {
+      await addDoc(collection(db, `partnerUsers/${partnerId}/coupons`), {
         code,
         status: "active",
         userId: "",
         validUntil: new Date(validUntil),
         partnerId,
         createdAt: serverTimestamp(),
+        experienceTitle : "",
       });
       alert("Coupon created");
       setCode("");

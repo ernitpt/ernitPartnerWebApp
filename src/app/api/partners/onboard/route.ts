@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     // Generate onboarding link to your app page
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://yourapp.com";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://ernit.xyz";
     const link = `${baseUrl}/partner/onboard?uid=${userRecord.uid}`;
 
     return NextResponse.json({ ok: true, uid: userRecord.uid, link });

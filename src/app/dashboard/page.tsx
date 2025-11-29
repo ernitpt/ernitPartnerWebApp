@@ -12,6 +12,7 @@ import {
   getDocs,
   query,
   orderBy,
+  where,
   updateDoc,
   setDoc,
   addDoc,
@@ -40,6 +41,8 @@ type Coupon = {
   userId?: string;
   code?: string;
   validUntil?: Timestamp | { seconds: number } | null;
+  experienceTitle?: string;
+  createdAt?: Timestamp | { seconds: number } | null;
 };
 
 type Invite = {
@@ -55,7 +58,6 @@ export default function PartnerDashboardPage() {
   const router = useRouter();
 
   const [partner, setPartner] = useState<PartnerInfo | null>(null);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
@@ -66,7 +68,13 @@ export default function PartnerDashboardPage() {
   const [partnerId, setPartnerId] = useState("");
   const [code, setCode] = useState("");
   const [validUntil, setValidUntil] = useState("");
+  const [experienceTitle, setExperienceTitle] = useState("");
   const [creatingCoupon, setCreatingCoupon] = useState(false);
+  
+  // Coupon lookup state
+  const [lookupCode, setLookupCode] = useState("");
+  const [lookedUpCoupon, setLookedUpCoupon] = useState<Coupon | null>(null);
+  const [lookingUp, setLookingUp] = useState(false);
 
   const [inviteCheckCode, setInviteCheckCode] = useState("");
   const [inviteResult, setInviteResult] = useState<any>(null);
@@ -75,9 +83,6 @@ export default function PartnerDashboardPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
-  const [redeeming, setRedeeming] = useState<string | null>(null);
-  const [confirmingCoupon, setConfirmingCoupon] = useState<Coupon | null>(null);
-  const [revoking, setRevoking] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -101,10 +106,7 @@ export default function PartnerDashboardPage() {
         const partnerData = partnerSnap.data() as PartnerInfo;
         setPartner(partnerData);
 
-        const couponsRef = collection(db, "partnerUsers", partnerUser.uid, "coupons");
-        const q = query(couponsRef, orderBy("createdAt", "desc"));
-        const snapshot = await getDocs(q);
-        setCoupons(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Coupon[]);
+        // Removed coupon list loading - now using lookup instead
 
         if (partnerData.isAdmin) {
           const invitesRef = collection(db, "partnerInvites");
@@ -124,25 +126,6 @@ export default function PartnerDashboardPage() {
 
   /** ========== FUNCTIONS ========== **/
 
-  const markRedeemed = async (couponId: string) => {
-    if (!partnerUser) return;
-    try {
-      setRedeeming(couponId);
-      const couponRef = doc(db, "partnerUsers", partnerUser.uid, "coupons", couponId);
-      await updateDoc(couponRef, {
-        status: "redeemed",
-        redeemedAt: serverTimestamp(),
-      });
-      setCoupons((prev) =>
-        prev.map((c) => (c.id === couponId ? { ...c, status: "redeemed", redeemedAt: Timestamp.now() } : c))
-      );
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setRedeeming(null);
-      setConfirmingCoupon(null);
-    }
-  };
 
   const createInvite = async () => {
     if (!partnerUser || !isAdmin) return alert("Not authorized.");
@@ -168,23 +151,82 @@ export default function PartnerDashboardPage() {
   };
 
   const handleCreateCoupon = async () => {
-    if (!partnerId || !code || !validUntil) return alert("All fields required");
+    if (!partnerId || !code || !validUntil || !experienceTitle.trim()) {
+      return alert("All fields required (Partner ID, Code, Valid Until, Experience Title)");
+    }
     setCreatingCoupon(true);
     try {
-      await addDoc(collection(db, `partnerCoupons/${partnerId}/coupons`), {
+      await addDoc(collection(db, `partnerUsers/${partnerId}/coupons`), {
         code,
         status: "active",
         validUntil: new Date(validUntil),
         partnerId,
+        experienceTitle: experienceTitle.trim(),
         createdAt: serverTimestamp(),
       });
       alert("✅ Coupon created.");
       setCode("");
       setValidUntil("");
+      setExperienceTitle("");
     } catch (e: any) {
       alert(e.message);
     } finally {
       setCreatingCoupon(false);
+    }
+  };
+
+  const handleLookupCoupon = async () => {
+    if (!lookupCode.trim() || !partnerUser) return alert("Enter a coupon code.");
+    setLookingUp(true);
+    setLookedUpCoupon(null);
+    try {
+      const couponsRef = collection(db, `partnerUsers/${partnerUser.uid}/coupons`);
+      const q = query(couponsRef, where("code", "==", lookupCode.trim()));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        alert("Coupon not found.");
+      } else {
+        const docSnap = snapshot.docs[0];
+        const data = docSnap.data();
+        setLookedUpCoupon({ id: docSnap.id, ...data } as Coupon);
+      }
+    } catch (e: any) {
+      alert(e.message || "Failed to lookup coupon");
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
+  const handleRedeemCoupon = async () => {
+    if (!lookedUpCoupon || !partnerUser) return;
+    
+    if (lookedUpCoupon.status === "redeemed") {
+      alert("This coupon has already been redeemed.");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to redeem coupon "${lookedUpCoupon.code}"?`)) {
+      return;
+    }
+
+    try {
+      const couponRef = doc(db, `partnerUsers/${partnerUser.uid}/coupons`, lookedUpCoupon.id);
+      await updateDoc(couponRef, {
+        status: "redeemed",
+        redeemedAt: serverTimestamp(),
+      });
+      
+      // Update local state
+      setLookedUpCoupon({
+        ...lookedUpCoupon,
+        status: "redeemed",
+        redeemedAt: Timestamp.now(),
+      });
+      
+      alert("✅ Coupon redeemed successfully!");
+    } catch (e: any) {
+      alert(e.message || "Failed to redeem coupon");
     }
   };
 
@@ -249,86 +291,101 @@ export default function PartnerDashboardPage() {
           </p>
         </div>
 
-        {/* 🎟️ COUPONS SECTION (unchanged, original style) */}
-        <h2 className="font-semibold text-xl text-gray-900 mb-4">Your Coupons</h2>
-        {coupons.length === 0 ? (
-          <p className="text-gray-700 text-center">No coupons yet. They’ll appear here when created.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {coupons.map((coupon) => (
-              <div
-                key={coupon.id}
-                className={`rounded-xl p-4 shadow-sm transition border ${
-                  coupon.status === "redeemed"
-                    ? "bg-gray-100 border-gray-200 opacity-80"
-                    : "bg-purple-50 border-purple-200 hover:shadow-md"
-                }`}
-              >
-                <h3 className="text-purple-700 font-semibold">{coupon.code || "Unnamed Coupon"}</h3>
-                {coupon.description && <p className="text-gray-700 text-sm">{coupon.description}</p>}
-                {coupon.discount && <p className="text-gray-900 font-medium mt-1">Discount: {coupon.discount}%</p>}
-                <p
-                  className={`mt-2 text-sm font-medium ${
-                    coupon.status === "redeemed" ? "text-green-600" : "text-yellow-600"
-                  }`}
-                >
-                  Status: {coupon.status ?? "active"}
-                </p>
-                {coupon.validUntil && (
-                  <p className="text-gray-500 text-xs mt-1">
-                    Valid until:{" "}
-                    {new Date(
-                      "seconds" in coupon.validUntil
-                        ? coupon.validUntil.seconds * 1000
-                        : (coupon.validUntil as any)
-                    ).toLocaleDateString()}
-                  </p>
-                )}
-                {coupon.redeemedAt && (
-                  <p className="text-gray-500 text-xs mt-1">
-                    Redeemed on: {new Date(coupon.redeemedAt.toDate?.() ?? coupon.redeemedAt).toLocaleString()}
-                  </p>
-                )}
-                {coupon.status !== "redeemed" && (
-                  <button
-                    onClick={() => setConfirmingCoupon(coupon)}
-                    className="mt-4 w-full py-2 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-500 hover:scale-105 transition-transform duration-300"
-                  >
-                    Mark as Redeemed
-                  </button>
-                )}
-              </div>
-            ))}
+        {/* 🎟️ COUPON LOOKUP SECTION */}
+        <div className="mb-10">
+          <h2 className="font-semibold text-xl text-gray-900 mb-4">Check Coupon</h2>
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Enter coupon code"
+              value={lookupCode}
+              onChange={(e) => setLookupCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLookupCoupon()}
+              className="flex-1 border rounded-lg px-3 py-2 text-gray-900 placeholder-gray-500"
+            />
+            <button
+              onClick={handleLookupCoupon}
+              disabled={lookingUp}
+              className="bg-gradient-to-r from-purple-600 to-blue-500 text-white px-6 py-2 rounded-lg hover:scale-105 transition-transform duration-300 disabled:opacity-60"
+            >
+              {lookingUp ? "Checking..." : "Check"}
+            </button>
           </div>
-        )}
 
-        {/* ✅ Confirmation Modal */}
-        {confirmingCoupon && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-2xl shadow-xl w-80 text-center">
-              <h3 className="text-lg font-bold text-gray-900 mb-3">Confirm Redemption</h3>
-              <p className="text-gray-700 mb-6">
-                Are you sure you want to mark{" "}
-                <span className="font-semibold text-purple-600">{confirmingCoupon.code}</span> as redeemed?
-              </p>
-              <div className="flex justify-center gap-3">
-                <button
-                  onClick={() => markRedeemed(confirmingCoupon.id)}
-                  disabled={redeeming === confirmingCoupon.id}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-500 transition disabled:opacity-50"
-                >
-                  {redeeming === confirmingCoupon.id ? "Marking..." : "Confirm"}
-                </button>
-                <button
-                  onClick={() => setConfirmingCoupon(null)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-xl hover:bg-gray-300 transition"
-                >
-                  Cancel
-                </button>
+          {lookedUpCoupon && (
+            <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-6 shadow-md">
+              <h3 className="text-xl font-bold text-purple-700 mb-4">Coupon Details</h3>
+              <div className="space-y-3 text-gray-900">
+                <div>
+                  <span className="font-semibold">Experience Title:</span>{" "}
+                  <span className="text-purple-600">{lookedUpCoupon.experienceTitle || "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold">Code:</span>{" "}
+                  <span className="text-gray-700">{lookedUpCoupon.code || "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold">Status:</span>{" "}
+                  <span
+                    className={`font-medium ${
+                      lookedUpCoupon.status === "active"
+                        ? "text-green-600"
+                        : lookedUpCoupon.status === "redeemed"
+                        ? "text-gray-600"
+                        : "text-yellow-600"
+                    }`}
+                  >
+                    {lookedUpCoupon.status || "active"}
+                  </span>
+                </div>
+                {lookedUpCoupon.createdAt && (
+                  <div>
+                    <span className="font-semibold">Created:</span>{" "}
+                    <span className="text-gray-700">
+                      {new Date(
+                        "seconds" in lookedUpCoupon.createdAt
+                          ? lookedUpCoupon.createdAt.seconds * 1000
+                          : (lookedUpCoupon.createdAt as any)
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {lookedUpCoupon.validUntil && (
+                  <div>
+                    <span className="font-semibold">Valid Until:</span>{" "}
+                    <span className="text-gray-700">
+                      {new Date(
+                        "seconds" in lookedUpCoupon.validUntil
+                          ? lookedUpCoupon.validUntil.seconds * 1000
+                          : (lookedUpCoupon.validUntil as any)
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {lookedUpCoupon.redeemedAt && (
+                  <div>
+                    <span className="font-semibold">Redeemed At:</span>{" "}
+                    <span className="text-gray-700">
+                      {new Date(
+                        "seconds" in lookedUpCoupon.redeemedAt
+                          ? lookedUpCoupon.redeemedAt.seconds * 1000
+                          : (lookedUpCoupon.redeemedAt as any).toDate?.() || lookedUpCoupon.redeemedAt
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                )}
               </div>
+              {lookedUpCoupon.status === "active" && (
+                <button
+                  onClick={handleRedeemCoupon}
+                  className="mt-4 w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-green-500 hover:scale-105 transition-transform duration-300"
+                >
+                  Redeem Coupon
+                </button>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* ⚙️ ADMIN TOOLS */}
         {isAdmin && (
@@ -361,24 +418,31 @@ export default function PartnerDashboardPage() {
             {/* 🎁 Create Partner Coupon */}
             <div className="mb-10">
               <h3 className="text-lg font-semibold mb-2">Create Coupon for Partner</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <input
                   value={partnerId}
                   onChange={(e) => setPartnerId(e.target.value)}
                   placeholder="Partner ID"
-                  className="border rounded-lg px-3 py-2"
+                  className="border rounded-lg px-3 py-2 text-gray-900"
                 />
                 <input
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="Coupon Code"
-                  className="border rounded-lg px-3 py-2"
+                  className="border rounded-lg px-3 py-2 text-gray-900"
+                />
+                <input
+                  type="text"
+                  value={experienceTitle}
+                  onChange={(e) => setExperienceTitle(e.target.value)}
+                  placeholder="Experience Title"
+                  className="border rounded-lg px-3 py-2 text-gray-900"
                 />
                 <input
                   type="date"
                   value={validUntil}
                   onChange={(e) => setValidUntil(e.target.value)}
-                  className="border rounded-lg px-3 py-2"
+                  className="border rounded-lg px-3 py-2 text-gray-900"
                 />
               </div>
               <button

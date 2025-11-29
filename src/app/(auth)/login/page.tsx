@@ -3,8 +3,8 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/firebase";
-import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc, enableNetwork } from "firebase/firestore";
+import { sendPasswordResetEmail, signInWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { checkInvite } from "@/services/inviteService";
 import type { PartnerUserRecord } from "@/types/partner";
 
@@ -15,6 +15,7 @@ export default function PartnerLogin() {
   const [loading, setLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [checkingInvite, setCheckingInvite] = useState(false);
+  const [sendingVerification, setSendingVerification] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -25,11 +26,35 @@ export default function PartnerLogin() {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCred.user.uid;
 
-      // 🔧 Your partner user doc is in "partnerUsers", not "partnerUser"
+      // Check if email is verified
+      if (!userCred.user.emailVerified) {
+        alert("⚠️ Please verify your email before logging in. Check your inbox for the verification link.");
+        
+        // Offer to resend verification email
+        const resend = confirm("Would you like us to resend the verification email?");
+        if (resend) {
+          setSendingVerification(true);
+          try {
+            await sendEmailVerification(userCred.user);
+            alert("✅ Verification email sent! Please check your inbox and spam folder.");
+          } catch (verifyError: any) {
+            alert("Error sending verification email: " + verifyError.message);
+          } finally {
+            setSendingVerification(false);
+          }
+        }
+        
+        // Sign out the unverified user
+        await auth.signOut();
+        return;
+      }
+
+      // Check partner status in Firestore
       const partnerSnap = await getDoc(doc(db, "partnerUsers", uid));
 
       if (!partnerSnap.exists()) {
         alert("This account is not registered as a partner.");
+        await auth.signOut();
         return;
       }
 
@@ -39,45 +64,59 @@ export default function PartnerLogin() {
 
       if (!isPartner && !isAdmin) {
         alert("This account is not registered as a partner or admin.");
+        await auth.signOut();
         return;
       }
 
-      // ✅ Redirect to partner dashboard (or admin if needed)
-        router.push("/dashboard");
+      // Update verification status in Firestore if needed
+      if (data.emailVerified === false) {
+        await fetch("/api/partners/verify-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid }),
+        });
+      }
+
+      // Successful login
+      router.push("/dashboard");
 
     } catch (error: any) {
-      alert(error.message ?? "Login failed");
+      if (error.code === "auth/wrong-password") {
+        alert("Incorrect password. Please try again.");
+      } else if (error.code === "auth/user-not-found") {
+        alert("No account found with this email.");
+      } else if (error.code === "auth/invalid-email") {
+        alert("Invalid email format.");
+      } else {
+        alert(error.message ?? "Login failed");
+      }
     } finally {
       setLoading(false);
     }
-    
   };
 
+  const handleReset = async () => {
+    if (!email.trim()) {
+      alert("Please enter your email first.");
+      return;
+    }
 
-    const handleReset = async () => {
-      if (!email.trim()) {
-        alert("Please enter your email first.");
-        return;
+    setResetting(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      alert("✅ Password reset email sent! Please check your inbox and spam folder.");
+    } catch (error: any) {
+      if (error.code === "auth/user-not-found") {
+        alert("No account found with that email.");
+      } else if (error.code === "auth/invalid-email") {
+        alert("Invalid email format.");
+      } else {
+        alert("Error sending reset email: " + error.message);
       }
-
-      setResetting(true);
-      try {
-        await sendPasswordResetEmail(auth, email.trim());
-        alert("✅ Password reset email sent! Please check your inbox and spam folder.");
-      } catch (error: any) {
-        if (error.code === "auth/user-not-found") {
-          alert("No account found with that email.");
-        } else if (error.code === "auth/invalid-email") {
-          alert("Invalid email format.");
-        } else {
-          alert("Error sending reset email: " + error.message);
-        }
-        console.error("Password reset error:", error);
-      } finally {
-        setResetting(false);
-      }
-    };
-
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleCheckInvite = async () => {
     if (!inviteCode.trim()) {
@@ -87,14 +126,8 @@ export default function PartnerLogin() {
 
     setCheckingInvite(true);
     try {
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
-        alert("You appear to be offline. Please check your internet connection.");
-        return;
-      }
-
-      await enableNetwork(db as any);
       await checkInvite(inviteCode);
-      router.push(`/signup?invite=${encodeURIComponent(inviteCode.trim())}` as any);
+      router.push(`/signup?invite=${encodeURIComponent(inviteCode.trim())}`);
     } catch (err: any) {
       alert("Error checking invite: " + err.message);
     } finally {
@@ -131,14 +164,14 @@ export default function PartnerLogin() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || sendingVerification}
             className={`w-full py-3 rounded-xl font-semibold text-white transition-transform duration-300 ${
-              loading
+              loading || sendingVerification
                 ? "bg-purple-400 cursor-not-allowed"
                 : "bg-gradient-to-r from-purple-600 to-blue-500 hover:scale-105 hover:shadow-lg hover:from-purple-500 hover:to-indigo-400"
             }`}
           >
-            {loading ? "Logging in..." : "Login"}
+            {sendingVerification ? "Sending verification..." : loading ? "Logging in..." : "Login"}
           </button>
         </form>
 
@@ -186,6 +219,3 @@ export default function PartnerLogin() {
     </div>
   );
 }
-
-
-

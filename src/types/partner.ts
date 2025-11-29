@@ -6,4 +6,8 @@ export type PartnerUserRecord = {
   createdAt?: any;
   email?: string;
   mapsUrl?: string;
+  emailVerified?: boolean;
+  onboardedAt?: any;
+  updatedAt?: any;
+  status?: string;
 };

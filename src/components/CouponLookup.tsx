@@ -51,7 +51,7 @@ export default function CouponLookup({ partnerId }: { partnerId: string }) {
 
     try {
       // ✅ Fix: correct subcollection path
-      const couponsRef = collection(db, `partnerCoupons/${partnerId}/coupons`);
+      const couponsRef = collection(db, `partnerUsers/${partnerId}/coupons`);
       const q = query(couponsRef, where("code", "==", code.trim()));
       const result = await getDocs(q);
 
@@ -78,7 +78,7 @@ export default function CouponLookup({ partnerId }: { partnerId: string }) {
     try {
       await runTransaction(db, async (transaction: any) => {
         // ✅ Fix: use correct path
-        const couponRef = doc(db, `partnerCoupons/${partnerId}/coupons`, coupon.id);
+        const couponRef = doc(db, `partnerUsers/${partnerId}/coupons`, coupon.id);
         const snap = await transaction.get(couponRef);
 
         if (!snap.exists()) throw new Error("Coupon not found");
